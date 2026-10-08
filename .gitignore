@@ -147,3 +147,26 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Python
+venv/
+.venv/
+_pycache_/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files and model files
+uploads/
+*.safetensors
+*.gguf
+
+# OS and editor junk
+.DS_Store
+Thumbs.db
