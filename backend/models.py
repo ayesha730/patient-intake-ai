@@ -4,7 +4,7 @@ from database import Base
 
 
 class Doctor(Base):
-    _tablename_ = "doctors"
+    __tablename__ = "doctors"
     id = Column(Integer, primary_key=True)
     hospital_id = Column(String, unique=True, nullable=False)
     name = Column(String)
@@ -18,7 +18,7 @@ class Doctor(Base):
 
 
 class Patient(Base):
-    _tablename_ = "patients"
+    __tablename__ = "patients"
     id = Column(Integer, primary_key=True)
     name = Column(String)
     language = Column(String, default="English")
@@ -26,7 +26,7 @@ class Patient(Base):
 
 
 class Appointment(Base):
-    _tablename_ = "appointments"
+    __tablename__ = "appointments"
     id = Column(Integer, primary_key=True)
     patient_id = Column(Integer, ForeignKey("patients.id"))
     doctor_id = Column(Integer, ForeignKey("doctors.id"))
