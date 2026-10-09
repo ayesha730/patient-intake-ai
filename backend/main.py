@@ -7,6 +7,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Patient Intake API")
 from routers import doctors
 app.include_router(doctors.router)
+from routers import intake
+app.include_router(intake.router)
 
 
 @app.get("/")
