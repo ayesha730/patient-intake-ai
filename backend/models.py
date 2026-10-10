@@ -21,8 +21,11 @@ class Patient(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True)
     name = Column(String)
+    age = Column(Integer)
+    gender = Column(String)
     language = Column(String, default="English")
     consent_given = Column(Boolean, default=False)
+    consent_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Appointment(Base):
@@ -32,12 +35,23 @@ class Appointment(Base):
     doctor_id = Column(Integer, ForeignKey("doctors.id"))
     slot_time = Column(DateTime)
     token_number = Column(Integer)
-    original_text = Column(Text)      # patient's own words
+    original_text = Column(Text)          # patient's own words
     original_language = Column(String)
-    summary = Column(Text)            # AI summary
-    confidence = Column(String)       # high / medium / low
+    duration = Column(String)
+    severity = Column(String)
+    summary = Column(Text)                # AI summary, filled in after AMD is live
+    confidence = Column(String)           # pending / high / medium / low
     missing_info = Column(Text)
-    urgency = Column(String, default="normal")  # normal / urgent
+    urgency = Column(String, default="normal")
     needs_review = Column(Boolean, default=False)
     review_status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Prescription(Base):
+    __tablename__ = "prescriptions"
+    id = Column(Integer, primary_key=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), unique=True)
+    medicines = Column(Text)              # what the doctor prescribed
+    ai_suggestion = Column(Text)          # filled in later, for comparison
+    notes = Column(Text)
