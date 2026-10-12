@@ -31,10 +31,6 @@ body {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
 }
 
-@media (max-width: 480px) {
-  .phone { width: 100vw; height: 100vh; border-radius: 0; }
-}
-
 .screen {
   flex: 1;
   display: flex;
@@ -104,6 +100,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 14px;
 }
+.hero .btn { max-width: 260px; }
 
 /* Top header for Sign in / Sign up */
 .top {
@@ -160,7 +157,6 @@ input:focus { border-bottom-color: var(--burgundy); }
 }
 .btn.outline { background: transparent; color: white; border-color: white; }
 .btn.light { background: white; color: var(--plum); border-color: white; }
-.hero .btn { max-width: 260px; }
 
 .link {
   background: none; border: none; color: var(--burgundy);
@@ -192,47 +188,123 @@ input:focus { border-bottom-color: var(--burgundy); }
 .price { color: var(--red); font-weight: 700; }
 .search-input { margin-top: 12px; border: 1px solid #ddd; border-radius: 24px; padding: 10px 16px; }
 
-/* Floating bottom navigation with raised active tab */
+/* ---------- Bottom tab bar: Home and Search side by side ---------- */
 .nav {
   position: absolute;
   left: 20px;
   right: 20px;
   bottom: 18px;
+  z-index: 50;
+}
+
+.nav-row {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   height: 70px;
+  padding: 0 12px;
   background: white;
   border-radius: 40px;
   box-shadow: 0 10px 30px rgba(42, 10, 31, 0.18);
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 12px;
 }
+
+/* Not used in this design */
+.jumper {
+  display: none;
+}
+
 .tab {
-  background: none;
-  border: none;
-  color: #9a8a90;
-  cursor: pointer;
+  flex: 1 1 0;
+  height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 56px;
-  border-radius: 50%;
-  transition: transform 0.35s ease, background 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #9a8a90;
+  cursor: pointer;
 }
-.tab-icon { font-size: 22px; line-height: 1; }
-.tab-label { font-size: 11px; margin-top: 4px; }
-.tab.active {
-  transform: translateY(-22px);
+
+.tab-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
+}
+
+.tab-label {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* Active tab: the circle rises above the bar, label is hidden */
+.tab.active .tab-icon {
+  transform: translateY(-26px);
   background: linear-gradient(135deg, var(--plum), var(--red));
   color: white;
   box-shadow: 0 8px 18px rgba(122, 31, 46, 0.45);
 }
-.tab.active .tab-label { display: none; }
-/* ===== Responsive: phone = full screen, desktop = wide centered layout ===== */
 
-/* Phones: full screen */
+.tab.active .tab-label {
+  display: none;
+}
+
+/* Content dives in from below when switching tabs */
+@keyframes dive {
+  0%   { opacity: 0; transform: translateY(60px) scale(0.94); }
+  60%  { opacity: 1; transform: translateY(-6px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.screen.dive {
+  animation: dive 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+/* Role switch on sign in */
+.role-toggle {
+  display: flex;
+  background: #f1ecee;
+  border-radius: 30px;
+  padding: 4px;
+  margin-bottom: 8px;
+}
+.role-toggle button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 10px;
+  border-radius: 26px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+.role-toggle button.on {
+  background: linear-gradient(90deg, var(--plum), var(--burgundy));
+  color: white;
+}
+
+/* Badges for safety flags */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+.badge.urgent { background: var(--red); color: white; }
+.badge.review { background: #fff3cd; color: #7a5b00; }
+.badge.info { background: #efe7ea; color: var(--plum); }
+
+/* ===== Phones: full screen ===== */
 @media (max-width: 767px) {
   .phone {
     width: 100vw;
@@ -242,21 +314,29 @@ input:focus { border-bottom-color: var(--burgundy); }
   }
 }
 
-/* Tablets and desktops: fill the window, keep content centered */
+/* ===== Tablets and desktops: fill the window, keep content centered ===== */
 @media (min-width: 768px) {
   body {
+    display: block;
     background: #f6f2f4;
     align-items: stretch;
   }
 
   .phone {
     width: 100%;
-    max-width: 1100px;
+    max-width: none;
     height: auto;
     min-height: 100vh;
+    margin: 0 auto;
     border-radius: 0;
     box-shadow: none;
     overflow: visible;
+  }
+
+  .screen,
+  .intro,
+  .hero {
+    width: 100%;
   }
 
   .screen {
@@ -293,107 +373,4 @@ input:focus { border-bottom-color: var(--burgundy); }
     transform: translateX(-50%);
     width: min(420px, calc(100% - 40px));
   }
-}
-/* ===== Fix: keep the desktop width the same on every screen ===== */
-@media (min-width: 768px) {
-  body {
-    display: block;
-  }
-
-  .phone {
-    width: 100%;
-    max-width: 1100px;
-    margin: 0 auto;
-  }
-
-  .screen,
-  .intro,
-  .hero {
-    width: 100%;
-  }
-}
-/* Desktop width: a comfortable app column */
-@media (min-width: 768px) {
-  .phone {
-    max-width: 720px;
-  }
-}
-/* Desktop: gradient screens fill the whole window, content stays centered */
-@media (min-width: 768px) {
-  .phone {
-    max-width: none;
-  }
-}
-/* Role switch on sign in */
-.role-toggle {
-  display: flex;
-  background: #f1ecee;
-  border-radius: 30px;
-  padding: 4px;
-  margin-bottom: 8px;
-}
-.role-toggle button {
-  flex: 1;
-  border: none;
-  background: none;
-  padding: 10px;
-  border-radius: 26px;
-  cursor: pointer;
-  color: var(--muted);
-  font-weight: 600;
-}
-.role-toggle button.on {
-  background: linear-gradient(90deg, var(--plum), var(--burgundy));
-  color: white;
-}
-
-/* Fish jump: the tab arcs up, overshoots, and settles */
-@keyframes fishJump {
-  0%   { transform: translateY(0) scale(1); }
-  35%  { transform: translateY(-40px) scale(1.12) rotate(-8deg); }
-  60%  { transform: translateY(-14px) scale(0.96) rotate(4deg); }
-  80%  { transform: translateY(-26px) scale(1.04) rotate(0deg); }
-  100% { transform: translateY(-22px) scale(1); }
-}
-.tab.active {
-  animation: fishJump 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
-}
-
-/* Content dives in from below when switching tabs */
-@keyframes dive {
-  0%   { opacity: 0; transform: translateY(60px) scale(0.94); }
-  60%  { opacity: 1; transform: translateY(-6px) scale(1.01); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-.screen.dive {
-  animation: dive 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
-}
-
-/* Badges for safety flags */
-.badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  margin-right: 6px;
-}
-.badge.urgent { background: var(--red); color: white; }
-.badge.review { background: #fff3cd; color: #7a5b00; }
-.badge.info { background: #efe7ea; color: var(--plum); }
-
-/* Horizontal fish-swim: the circle overshoots sideways and stretches as it moves */
-.jumper {
-  transition: left 0.6s cubic-bezier(0.34, 1.4, 0.64, 1);
-}
-
-.jump-dot {
-  animation: swimX 0.6s ease-out;
-}
-
-@keyframes swimX {
-  0%   { transform: scaleX(1) scaleY(1); }
-  30%  { transform: scaleX(1.35) scaleY(0.82); }
-  60%  { transform: scaleX(0.9) scaleY(1.06); }
-  80%  { transform: scaleX(1.05) scaleY(0.97); }
-  100% { transform: scaleX(1) scaleY(1); }
 }
