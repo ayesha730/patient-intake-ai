@@ -1,0 +1,376 @@
+:root {
+  --plum: #2a0a1f;
+  --burgundy: #7a1f2e;
+  --red: #c1272d;
+  --card: #f6f2f4;
+  --muted: #8a7880;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #e6dfe2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Phone frame */
+.phone {
+  position: relative;
+  width: 380px;
+  height: 760px;
+  background: var(--card);
+  border-radius: 28px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-bottom: 100px;
+  animation: fade 0.4s ease;
+}
+
+@keyframes fade {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Gradients */
+.grad {
+  background: linear-gradient(160deg, var(--plum) 0%, var(--burgundy) 65%, var(--red) 100%);
+}
+
+/* Intro (opening) */
+.intro {
+  flex: 1;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 0;
+}
+.intro-logo { font-size: 64px; animation: pop 1s ease forwards; }
+.intro-brand {
+  letter-spacing: 4px;
+  margin-top: 14px;
+  opacity: 0;
+  animation: rise 1s ease 0.6s forwards;
+}
+
+@keyframes pop {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Welcome */
+.hero {
+  flex: 1;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 28px;
+  text-align: center;
+}
+.logo { font-size: 44px; line-height: 1; }
+.brand { letter-spacing: 3px; font-size: 14px; margin: 8px 0 40px; opacity: 0.9; }
+.hero h1 { margin: 0 0 8px; font-size: 28px; }
+.hero .muted { color: #f1d9de; font-size: 14px; }
+.social-label { font-size: 13px; margin-top: 40px; opacity: 0.9; }
+.socials { display: flex; gap: 14px; margin-top: 12px; }
+.socials span {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: white; color: var(--plum);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px;
+}
+.hero .btn { max-width: 260px; }
+
+/* Top header for Sign in / Sign up */
+.top {
+  color: white;
+  padding: 36px 24px 60px;
+}
+.top h1 { margin: 0; font-size: 28px; line-height: 1.2; }
+.back {
+  background: none; border: none; color: white;
+  font-size: 22px; cursor: pointer; padding: 0 0 12px;
+}
+
+/* White card that overlaps the header */
+.sheet {
+  background: white;
+  border-radius: 28px 28px 0 0;
+  margin-top: -28px;
+  padding: 28px 24px;
+  flex: 1;
+}
+
+/* Form fields */
+label {
+  display: block;
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 18px;
+}
+input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid #ccc;
+  padding: 8px 0;
+  font-size: 15px;
+  outline: none;
+  background: transparent;
+}
+input:focus { border-bottom-color: var(--burgundy); }
+
+/* Buttons */
+.btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 30px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+.btn.solid {
+  background: linear-gradient(90deg, var(--plum), var(--burgundy));
+  color: white;
+}
+.btn.outline { background: transparent; color: white; border-color: white; }
+.btn.light { background: white; color: var(--plum); border-color: white; }
+
+.link {
+  background: none; border: none; color: var(--burgundy);
+  font-weight: 700; cursor: pointer; padding: 0;
+}
+
+/* Inner pages */
+.page { padding: 24px; }
+.page h2 { color: var(--plum); margin: 0 0 6px; }
+.muted { color: var(--muted); font-size: 14px; }
+.card-box {
+  background: white;
+  border-radius: 18px;
+  padding: 18px;
+  margin-top: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+.card-box.feature { background: linear-gradient(135deg, var(--plum), var(--burgundy)); color: white; }
+.card-box.feature .muted { color: #f1d9de; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.chip {
+  border: 1px solid var(--burgundy);
+  background: white; color: var(--burgundy);
+  border-radius: 20px; padding: 6px 14px;
+  font-size: 13px; cursor: pointer;
+}
+.chip.on { background: var(--burgundy); color: white; }
+.doc-row { display: flex; justify-content: space-between; align-items: center; }
+.price { color: var(--red); font-weight: 700; }
+.search-input { margin-top: 12px; border: 1px solid #ddd; border-radius: 24px; padding: 10px 16px; }
+
+/* ---------- Bottom tab bar: Home and Search side by side ---------- */
+.nav {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 18px;
+  z-index: 50;
+}
+
+.nav-row {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 70px;
+  padding: 0 12px;
+  background: white;
+  border-radius: 40px;
+  box-shadow: 0 10px 30px rgba(42, 10, 31, 0.18);
+}
+
+/* Not used in this design */
+.jumper {
+  display: none;
+}
+
+.tab {
+  flex: 1 1 0;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #9a8a90;
+  cursor: pointer;
+}
+
+.tab-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
+}
+
+.tab-label {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* Active tab: the circle rises above the bar, label is hidden */
+.tab.active .tab-icon {
+  transform: translateY(-26px);
+  background: linear-gradient(135deg, var(--plum), var(--red));
+  color: white;
+  box-shadow: 0 8px 18px rgba(122, 31, 46, 0.45);
+}
+
+.tab.active .tab-label {
+  display: none;
+}
+
+/* Content dives in from below when switching tabs */
+@keyframes dive {
+  0%   { opacity: 0; transform: translateY(60px) scale(0.94); }
+  60%  { opacity: 1; transform: translateY(-6px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.screen.dive {
+  animation: dive 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+/* Role switch on sign in */
+.role-toggle {
+  display: flex;
+  background: #f1ecee;
+  border-radius: 30px;
+  padding: 4px;
+  margin-bottom: 8px;
+}
+.role-toggle button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 10px;
+  border-radius: 26px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+.role-toggle button.on {
+  background: linear-gradient(90deg, var(--plum), var(--burgundy));
+  color: white;
+}
+
+/* Badges for safety flags */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-right: 6px;
+}
+.badge.urgent { background: var(--red); color: white; }
+.badge.review { background: #fff3cd; color: #7a5b00; }
+.badge.info { background: #efe7ea; color: var(--plum); }
+
+/* ===== Phones: full screen ===== */
+@media (max-width: 767px) {
+  .phone {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+/* ===== Tablets and desktops: fill the window, keep content centered ===== */
+@media (min-width: 768px) {
+  body {
+    display: block;
+    background: #f6f2f4;
+    align-items: stretch;
+  }
+
+  .phone {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    min-height: 100vh;
+    margin: 0 auto;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .screen,
+  .intro,
+  .hero {
+    width: 100%;
+  }
+
+  .screen {
+    overflow: visible;
+    min-height: 100vh;
+    padding-bottom: 120px;
+  }
+
+  /* Header text lines up with the centered card */
+  .top {
+    padding-left: max(24px, calc(50% - 230px));
+    padding-right: max(24px, calc(50% - 230px));
+  }
+
+  /* White form card stays a readable width */
+  .sheet {
+    max-width: 460px;
+    width: 100%;
+    margin: -28px auto 0;
+    border-radius: 28px;
+  }
+
+  /* Home and Search pages stay readable on wide screens */
+  .page {
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* Floating tab bar centered under the content */
+  .nav {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(420px, calc(100% - 40px));
+  }
+}
