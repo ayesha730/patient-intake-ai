@@ -6,7 +6,8 @@ const path = require("path");
 
 const PORT = 3001;
 const DATA_FILE = path.join(__dirname, "data.json");
-const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null };
+const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null, audit: [] };
+const MAX_AUDIT = 500;
 
 function readState() {
   try {
@@ -53,6 +54,7 @@ const server = http.createServer((req, res) => {
           alerts: Array.isArray(incoming.alerts) ? incoming.alerts : [],
           doctors: Array.isArray(incoming.doctors) ? incoming.doctors : [],
           doctorProfile: incoming.doctorProfile || null,
+          audit: Array.isArray(incoming.audit) ? incoming.audit.slice(-MAX_AUDIT) : [],
         });
         send(res, 200, { ok: true });
       } catch {
