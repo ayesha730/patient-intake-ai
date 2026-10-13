@@ -1,36 +1,18 @@
 import { useState } from "react";
-import {
-  checkRedFlags,
-  suggestSpecialty,
-  detectDuration,
-  findMissing,
-  classifyUrgency,
-} from "../lib/intakeRules";
+import { checkRedFlags, suggestSpecialty, detectDuration, classifyUrgency } from "../lib/intakeRules";
+import { LANGUAGES, tr, dirOf } from "../lib/i18n";
+import { ft } from "../lib/patientFields";
+import { specialtyName } from "../lib/specialties";
 
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "ur", label: "اردو" },
-  { code: "de", label: "Deutsch" },
-  { code: "ar", label: "العربية" },
-];
+const STEPS = ["language", "consent", "details", "describe", "followup", "result"];
 
-// Translations below should be checked by a native speaker before release
-const CONSENT = {
-  en: "I agree that my description is shared with a doctor and used to prepare my visit. The AI only restates what I say and does not diagnose. My data is encrypted and every access is logged.",
-  ur: "میں اس بات پر رضامند ہوں کہ میری تفصیل ڈاکٹر کے ساتھ شیئر کی جائے گی اور میری ملاقات کی تیاری کے لیے استعمال ہوگی۔ AI صرف وہی دہراتا ہے جو میں کہتا ہوں، تشخیص نہیں کرتا۔ میرا ڈیٹا خفیہ ہے اور ہر رسائی ریکارڈ کی جاتی ہے۔",
-  de: "Ich stimme zu, dass meine Beschreibung an einen Arzt weitergegeben und zur Vorbereitung meines Termins verwendet wird. Die KI gibt nur wieder, was ich sage, und stellt keine Diagnose. Meine Daten sind verschlüsselt und jeder Zugriff wird protokolliert.",
-  ar: "أوافق على مشاركة وصفي مع الطبيب واستخدامه لتجهيز زيارتي. يعيد الذكاء الاصطناعي صياغة ما أقوله فقط ولا يشخّص. بياناتي مشفّرة ويُسجَّل كل وصول إليها.",
-};
-
-const DURATIONS = ["Less than 1 day", "1–3 days", "4–7 days", "More than a week"];
-const STEPS = ["language", "consent", "describe", "followup", "result"];
-const TITLES = {
-  language: "Choose your language",
-  consent: "Consent",
-  describe: "Describe your problem",
-  followup: "A few details",
-  result: "Your intake",
-  emergency: "Urgent care needed",
+const TITLE_KEY = {
+  language: "chooseLang",
+  consent: "consentTitle",
+  describe: "describeTitle",
+  followup: "followupTitle",
+  result: "resultTitle",
+  emergency: "emergencyTitle",
 };
 
 const textareaStyle = {
@@ -49,12 +31,25 @@ export default function Intake({ onBack, onComplete }) {
   const [step, setStep] = useState("language");
   const [lang, setLang] = useState("en");
   const [agreed, setAgreed] = useState(false);
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
   const [problem, setProblem] = useState("");
   const [duration, setDuration] = useState("");
   const [severity, setSeverity] = useState(null);
   const [flags, setFlags] = useState([]);
 
-  const missing = findMissing({ duration, severity });
+  const T = (key) => tr(lang, key);
+  const F = (key) => ft(lang, key);
+  const dir = dirOf(lang);
+
+  const ageNumber = Number(age);
+  const detailsOk = name.trim() !== "" && ageNumber >= 1 && ageNumber <= 120 && gender !== "";
+
+  // Missing items are translated, so they follow the chosen language
+  const missing = [];
+  if (!duration) missing.push(T("durationLabel"));
+  if (severity == null) missing.push(T("severityLabel"));
 
   const goBack = () => {
     const i = STEPS.indexOf(step);
@@ -72,6 +67,9 @@ export default function Intake({ onBack, onComplete }) {
   };
 
   const buildRecord = (urgency) => ({
+    name: name.trim(),
+    age: ageNumber,
+    gender,
     problem: problem.trim(),
     language: lang,
     duration,
@@ -83,19 +81,21 @@ export default function Intake({ onBack, onComplete }) {
     createdAt: new Date().toISOString(),
   });
 
-  const headerKey = step === "emergency" ? "emergency" : step;
+  const urgency = classifyUrgency(problem);
+  const durations = T("durations");
+  const title = step === "details" ? F("title") : T(TITLE_KEY[step]);
 
   return (
     <>
       <div className="top grad">
-        <button className="back" onClick={goBack} aria-label="Go back">←</button>
-        <h1>{TITLES[headerKey]}</h1>
+        <button className="back" onClick={goBack} aria-label={T("backBtn")}>←</button>
+        <h1>{title}</h1>
       </div>
 
-      <div className="sheet">
+      <div className="sheet" dir={dir}>
         {step === "language" && (
           <>
-            <p className="muted">Your doctor will read your visit in their own language.</p>
+            <p className="muted">{T("langHint")}</p>
             <div className="chips">
               {LANGUAGES.map((l) => (
                 <button
@@ -107,13 +107,13 @@ export default function Intake({ onBack, onComplete }) {
                 </button>
               ))}
             </div>
-            <button className="btn solid" onClick={() => setStep("consent")}>CONTINUE</button>
+            <button className="btn solid" onClick={() => setStep("consent")}>{T("next")}</button>
           </>
         )}
 
         {step === "consent" && (
           <>
-            <p style={{ color: "#2a0a1f", fontSize: 15, lineHeight: 1.5 }}>{CONSENT[lang]}</p>
+            <p style={{ color: "#2a0a1f", fontSize: 15, lineHeight: 1.5 }}>{T("consentText")}</p>
             <label style={{ display: "flex", gap: 10, alignItems: "center", color: "#2a0a1f" }}>
               <input
                 type="checkbox"
@@ -121,48 +121,90 @@ export default function Intake({ onBack, onComplete }) {
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
               />
-              I agree
+              {T("agree")}
             </label>
             <button
               className="btn solid"
               disabled={!agreed}
               style={{ opacity: agreed ? 1 : 0.5 }}
+              onClick={() => setStep("details")}
+            >
+              {T("next")}
+            </button>
+          </>
+        )}
+
+        {step === "details" && (
+          <>
+            <p className="muted">{F("hint")}</p>
+
+            <label>{F("name")}</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} />
+
+            <label>{F("age")}</label>
+            <input
+              type="number"
+              min="1"
+              max="120"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+            />
+
+            <label>{F("gender")}</label>
+            <div className="chips">
+              {["male", "female", "other"].map((g) => (
+                <button
+                  key={g}
+                  className={`chip ${gender === g ? "on" : ""}`}
+                  onClick={() => setGender(g)}
+                >
+                  {F(g)}
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="btn solid"
+              disabled={!detailsOk}
+              style={{ opacity: detailsOk ? 1 : 0.5 }}
               onClick={() => setStep("describe")}
             >
-              CONTINUE
+              {T("next")}
             </button>
           </>
         )}
 
         {step === "describe" && (
           <>
-            <p className="muted">Describe it in your own words. Example: "I have had a headache for 3 days."</p>
+            <p className="muted">{T("describeHint")}</p>
             <textarea
-              style={textareaStyle}
+              lang={lang}
+              dir={dir}
+              style={{ ...textareaStyle, textAlign: dir === "rtl" ? "right" : "left" }}
               value={problem}
               onChange={(e) => setProblem(e.target.value)}
-              placeholder="Write here..."
+              placeholder={T("describePlaceholder")}
             />
-            <button className="btn solid" onClick={handleDescribe}>CONTINUE</button>
+            <button className="btn solid" onClick={handleDescribe}>{T("next")}</button>
           </>
         )}
 
         {step === "followup" && (
           <>
             <div className="card-box" style={{ marginTop: 0 }}>
-              <strong>Missing information</strong>
+              <strong>{T("missing")}</strong>
               <p className="muted" style={{ margin: "6px 0 0" }}>
-                {missing.length ? missing.join(", ") : "None. Thank you."}
+                {missing.length ? missing.join(", ") : T("noneMissing")}
               </p>
             </div>
 
             {!duration && (
               <>
-                <label>How long have you had this?</label>
+                <label>{T("durationQ")}</label>
                 <div className="chips">
-                  {DURATIONS.map((d) => (
+                  {durations.map((d, i) => (
                     <button
-                      key={d}
+                      key={i}
                       className={`chip ${duration === d ? "on" : ""}`}
                       onClick={() => setDuration(d)}
                     >
@@ -175,7 +217,7 @@ export default function Intake({ onBack, onComplete }) {
 
             {severity == null && (
               <>
-                <label>How severe is it? (1 = mild, 10 = worst)</label>
+                <label>{T("severityQ")}</label>
                 <div className="chips">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <button
@@ -196,7 +238,7 @@ export default function Intake({ onBack, onComplete }) {
               style={{ opacity: missing.length ? 0.5 : 1 }}
               onClick={() => setStep("result")}
             >
-              CONTINUE
+              {T("next")}
             </button>
           </>
         )}
@@ -207,17 +249,13 @@ export default function Intake({ onBack, onComplete }) {
               className="card-box"
               style={{ marginTop: 0, background: "#fdecec", border: "1px solid #c1272d" }}
             >
-              <strong style={{ color: "#c1272d" }}>Emergency symptoms reported</strong>
+              <strong style={{ color: "#c1272d" }}>{T("emergencyHead")}</strong>
               <p style={{ margin: "8px 0", color: "#2a0a1f", fontSize: 14, lineHeight: 1.5 }}>
-                Booking is stopped. Call your local emergency number or go to the nearest
-                emergency room now. Hospital staff have been alerted.
-              </p>
-              <p className="muted" style={{ margin: 0 }}>
-                Detected: {flags.join(", ")}
+                {T("emergencyText")}
               </p>
             </div>
             <button className="btn solid" onClick={() => onComplete(buildRecord("emergency"))}>
-              I UNDERSTAND
+              {T("understand")}
             </button>
           </>
         )}
@@ -225,24 +263,19 @@ export default function Intake({ onBack, onComplete }) {
         {step === "result" && (
           <>
             <div className="card-box" style={{ marginTop: 0 }}>
-              <p className="muted" style={{ margin: 0 }}>Suggested specialty</p>
+              <p className="muted" style={{ margin: 0 }}>{T("suggested")}</p>
               <p style={{ margin: "4px 0 10px", fontWeight: 700, color: "#2a0a1f" }}>
-                {suggestSpecialty(problem)}
+                {specialtyName(lang, suggestSpecialty(problem))}
               </p>
-              <span className={`badge ${classifyUrgency(problem) === "uncertain" ? "review" : "info"}`}>
-                {classifyUrgency(problem) === "uncertain" ? "Needs review" : "Normal"}
+              <span className={`badge ${urgency === "uncertain" ? "review" : "info"}`}>
+                {urgency === "uncertain" ? T("needsReview") : T("normal")}
               </span>
-              {classifyUrgency(problem) === "uncertain" && (
-                <p className="muted" style={{ marginTop: 10 }}>
-                  Your description is short, so a staff member will check it before your visit.
-                </p>
+              {urgency === "uncertain" && (
+                <p className="muted" style={{ marginTop: 10 }}>{T("reviewNote")}</p>
               )}
             </div>
-            <button
-              className="btn solid"
-              onClick={() => onComplete(buildRecord(classifyUrgency(problem)))}
-            >
-              CHOOSE A DOCTOR
+            <button className="btn solid" onClick={() => onComplete(buildRecord(urgency))}>
+              {T("chooseDoctor")}
             </button>
           </>
         )}
