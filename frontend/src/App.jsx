@@ -9,6 +9,8 @@ import Intake from "./screens/Intake";
 import Book from "./screens/Book";
 import DoctorPatients from "./screens/DoctorPatients";
 import DoctorProfile from "./screens/DoctorProfile";
+import Queue from "./screens/Queue";
+import Chat from "./components/Chat";
 import { DOCTORS } from "./lib/doctors";
 
 const TABS = {
@@ -18,6 +20,7 @@ const TABS = {
   ],
   doctor: [
     { id: "patients", label: "Patients", icon: "☰", Screen: DoctorPatients },
+    { id: "queue", label: "Queue", icon: "≡", Screen: Queue },
     { id: "profile", label: "Profile", icon: "☺️", Screen: DoctorProfile },
   ],
 };
@@ -27,6 +30,15 @@ const BURGUNDY = "#7a1f2e";
 
 // Address of the local data server (backend/server.js)
 const API_URL = "http://localhost:3001/api/state";
+// Remembers which record belongs to this browser, so the patient can message the doctor
+const MY_RECORD_KEY = "my-record-id";
+const MAX_AUDIT = 500;
+
+const REVIEW_ACTION = {
+  approved: "Doctor approved the summary",
+  rejected: "Doctor rejected the summary",
+  edited: "Doctor edited the summary",
+};
 
 const EMPTY_DOCTOR_PROFILE = {
   name: "",
@@ -39,6 +51,14 @@ const EMPTY_DOCTOR_PROFILE = {
   language: "en",
 };
 
+function readMyRecordId() {
+  try {
+    return localStorage.getItem(MY_RECORD_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState("intro");
   const [role, setRole] = useState("patient");
@@ -46,9 +66,12 @@ export default function App() {
   const [dir, setDir] = useState(1);
   const [booking, setBooking] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [records, setRecords] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [audit, setAudit] = useState([]);
   const [lastRecord, setLastRecord] = useState(null);
+  const [myRecordId, setMyRecordId] = useState(readMyRecordId);
   const [doctorProfile, setDoctorProfile] = useState(EMPTY_DOCTOR_PROFILE);
   const [doctors, setDoctors] = useState(DOCTORS);
   // Becomes true only after the saved data has loaded. This stops the app
@@ -67,6 +90,7 @@ export default function App() {
         if (cancelled) return;
         setRecords(saved.records || []);
         setAlerts(saved.alerts || []);
+        setAudit(saved.audit || []);
         if (saved.doctors && saved.doctors.length > 0) setDoctors(saved.doctors);
         if (saved.doctorProfile) setDoctorProfile(saved.doctorProfile);
         setLoaded(true);
@@ -85,11 +109,11 @@ export default function App() {
     fetch(API_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ records, alerts, doctors, doctorProfile }),
+      body: JSON.stringify({ records, alerts, doctors, doctorProfile, audit }),
     }).catch(() => {
       // Server stopped. Data stays on screen but is not saved this time.
     });
-  }, [loaded, records, alerts, doctors, doctorProfile]);
+  }, [loaded, records, alerts, doctors, doctorProfile, audit]);
 
   useEffect(() => {
     if (screen !== "intro") return;
@@ -100,6 +124,21 @@ export default function App() {
   const tabs = TABS[role] || TABS.patient;
   const tabIndex = Math.max(0, tabs.findIndex((t) => t.id === tab));
   const Active = tabs[tabIndex].Screen;
+
+  // The patient's own record, read fresh from the list (so new messages show)
+  const chatRecord = records.find((r) => r.id === myRecordId) || null;
+
+  // Adds one line to the activity log. Only the name and token are kept, not the patient's words.
+  const logEvent = (who, action, record) => {
+    const entry = {
+      time: new Date().toISOString(),
+      who,
+      action,
+      name: record ? record.name || "Patient" : "",
+      token: record && record.token != null ? record.token : null,
+    };
+    setAudit((a) => [...a, entry].slice(-MAX_AUDIT));
+  };
 
   const changeTab = (id) => {
     const next = tabs.findIndex((t) => t.id === id);
@@ -114,6 +153,7 @@ export default function App() {
     setDir(1);
     setBooking(false);
     setIntakeOpen(false);
+    setChatOpen(false);
     setScreen("app");
   };
 
@@ -121,6 +161,7 @@ export default function App() {
   const signOut = () => {
     setBooking(false);
     setIntakeOpen(false);
+    setChatOpen(false);
     setScreen("welcome");
   };
 
@@ -149,17 +190,24 @@ export default function App() {
   // Called when the patient finishes intake
   const handleIntakeDone = (record) => {
     setIntakeOpen(false);
-    const id = `r${Date.now()}`;
+    const id = "r" + Date.now()
+
+    // Remember that this browser belongs to this record
+    try {
+      localStorage.setItem(MY_RECORD_KEY, id);
+    } catch {
+      // Storage blocked. Messaging still works until the page is closed.
+    }
+    setMyRecordId(id);
 
     if (record.urgency === "emergency") {
-      setRecords((r) => [
-        ...r,
-        { ...record, id, token: null, reviewStatus: "pending" },
-      ]);
+      const entry = { ...record, id, token: null, reviewStatus: "pending", messages: [] };
+      setRecords((r) => [...r, entry]);
       setAlerts((a) => [
         ...a,
         { time: record.createdAt, text: "Emergency symptoms reported", problem: record.problem },
       ]);
+      logEvent("patient", "Emergency symptoms reported", entry);
       return;
     }
 
@@ -168,15 +216,28 @@ export default function App() {
       id,
       token: records.length + 1,
       reviewStatus: "pending",
+      messages: [],
     };
     setRecords((r) => [...r, entry]);
     setLastRecord(entry);
     setBooking(true);
+    logEvent("patient", "Intake completed and booked", entry);
   };
 
-  // Used by the doctor to approve, edit, or reject a summary
+  // Used by the doctor to approve, edit, or reject a summary, and by both sides to message
   const handleUpdate = (id, patch) => {
+    const rec = records.find((r) => r.id === id);
     setRecords((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+    if (!rec) return;
+    if (patch.reviewStatus) {
+      logEvent("doctor", REVIEW_ACTION[patch.reviewStatus] || "Doctor changed review status", rec);
+    } else if (patch.prescription || patch.patientMedicines) {
+      logEvent("doctor", "Doctor saved medicines", rec);
+    } else if (patch.messages && patch.messages.length > 0) {
+      const last = patch.messages[patch.messages.length - 1];
+      logEvent(last.from, last.from === "doctor" ? "Doctor sent a message" : "Patient sent a message", rec);
+    }
   };
 
   let content;
@@ -208,12 +269,27 @@ export default function App() {
     content = (
       <Book record={lastRecord} doctors={doctors} onClose={() => setBooking(false)} />
     );
+  } else if (chatOpen && chatRecord) {
+    content = (
+      <div className="page">
+        <h2>Messages</h2>
+        <p className="muted">Write to your doctor here. For a medical emergency, call emergency services.</p>
+        <Chat
+          title="Your doctor"
+          sender="patient"
+          messages={chatRecord.messages || []}
+          onSend={(list) => handleUpdate(chatRecord.id, { messages: list })}
+          onClose={() => setChatOpen(false)}
+        />
+      </div>
+    );
   } else {
     content = (
       <Active
         onBook={() => setIntakeOpen(true)}
         records={records}
         alerts={alerts}
+        audit={audit}
         onUpdate={handleUpdate}
         profile={doctorProfile}
         onSave={handleSaveProfile}
@@ -224,17 +300,40 @@ export default function App() {
   const wrapperClass =
     screen === "app" ? "screen dive" : GRADIENT_SCREENS.includes(screen) ? "screen grad" : "screen";
 
-  const showNav = screen === "app" && !booking && !intakeOpen;
+  const showNav = screen === "app" && !booking && !intakeOpen && !chatOpen;
+  const showMessageButton = showNav && role === "patient" && chatRecord;
 
   return (
     <div className="phone">
       <div
         className={wrapperClass}
         style={{ "--dir": dir }}
-        key={screen === "app" ? `${role}-${tab}-${booking}-${intakeOpen}` : screen}
+        key={screen === "app" ? role + "-" + tab + "-" + booking + "-" + intakeOpen + "-" + chatOpen : screen}
       >
         {content}
       </div>
+
+      {showMessageButton && (
+        <button
+          onClick={() => setChatOpen(true)}
+          style={{
+            position: "absolute",
+            right: 20,
+            bottom: 104,
+            zIndex: 5,
+            background: BURGUNDY,
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "10px 16px",
+            fontSize: 13,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            cursor: "pointer",
+          }}
+        >
+          Message doctor
+        </button>
+      )}
 
       {showNav && (
         <nav className="nav">
@@ -242,7 +341,7 @@ export default function App() {
             {tabs.map((t) => (
               <button
                 key={t.id}
-                className={`tab ${tab === t.id ? "active" : ""}`}
+                className={tab === t.id ? "active" : "tab"}
                 onClick={() => changeTab(t.id)}
               >
                 <span className="tab-icon">{t.icon}</span>

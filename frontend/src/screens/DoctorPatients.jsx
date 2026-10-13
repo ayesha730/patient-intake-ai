@@ -3,6 +3,8 @@ import { buildSummary, checkOutput } from "../lib/summary";
 import { specialtyName } from "../lib/specialties";
 import { translateText } from "../lib/translate";
 import { LANGUAGES } from "../lib/i18n";
+import { parseList, compareLists } from "../lib/medicines";
+import Chat from "../components/Chat";
 
 const ORDER = { emergency: 0, uncertain: 1, normal: 2 };
 const URGENCY_LABEL = { emergency: "Emergency", uncertain: "Check", normal: "Normal" };
@@ -15,6 +17,15 @@ const REVIEW_LABEL = {
   approved: "Approved",
   edited: "Edited and approved",
   rejected: "Rejected",
+};
+const TEXTAREA = {
+  width: "100%",
+  minHeight: 70,
+  marginTop: 8,
+  borderRadius: 12,
+  border: "1px solid #ddd",
+  padding: 10,
+  fontFamily: "inherit",
 };
 
 function formatTime(iso) {
@@ -31,12 +42,24 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [warning, setWarning] = useState("");
+  const [rxDraft, setRxDraft] = useState("");
+  const [mentionDraft, setMentionDraft] = useState("");
+  const [rxSaved, setRxSaved] = useState(false);
 
   const doctorLang = (profile && profile.language) || "en";
   const current = records.find((r) => r.id === openId);
 
   const needsInterpreter = (r) =>
     translateText(r.problem, r.language, doctorLang).status === "needs_interpreter";
+
+  const openRecord = (r) => {
+    setOpenId(r.id);
+    setEditing(false);
+    setWarning("");
+    setRxDraft((r.prescription || []).join(", "));
+    setMentionDraft((r.patientMedicines || []).join(", "));
+    setRxSaved(false);
+  };
 
   const closeDetail = () => {
     setOpenId(null);
@@ -49,6 +72,9 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
     const summary = buildSummary(current);
     const shown = current.summary || summary.restated;
     const translation = translateText(current.problem, current.language, doctorLang);
+    const savedRx = current.prescription || [];
+    const savedMen = current.patientMedicines || [];
+    const cmp = compareLists(savedRx, savedMen);
 
     const startEdit = () => {
       setDraft(shown);
@@ -65,6 +91,14 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
       onUpdate(current.id, { summary: draft, reviewStatus: "edited" });
       setEditing(false);
       setWarning("");
+    };
+
+    const saveMedicines = () => {
+      onUpdate(current.id, {
+        prescription: parseList(rxDraft),
+        patientMedicines: parseList(mentionDraft),
+      });
+      setRxSaved(true);
     };
 
     const approve = () => onUpdate(current.id, { reviewStatus: "approved" });
@@ -94,19 +128,7 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
 
             {editing ? (
               <>
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  style={{
-                    width: "100%",
-                    minHeight: 100,
-                    marginTop: 10,
-                    borderRadius: 12,
-                    border: "1px solid #ddd",
-                    padding: 10,
-                    fontFamily: "inherit",
-                  }}
-                />
+                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} style={TEXTAREA} />
                 {warning && <p style={{ color: "#c1272d", fontSize: 13 }}>{warning}</p>}
                 <div className="chips">
                   <button className="chip on" onClick={saveEdit}>Save</button>
@@ -154,6 +176,70 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
           </p>
         </div>
 
+        <div className="card-box">
+          <strong>Medicine check</strong>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 12 }}>
+            Type the names yourself, separated by commas. The app only compares the two lists. It is a checklist for you, not a diagnosis.
+          </p>
+
+          <p style={{ margin: "10px 0 0", fontSize: 13 }}>Your prescription</p>
+          <textarea
+            value={rxDraft}
+            onChange={(e) => {
+              setRxDraft(e.target.value);
+              setRxSaved(false);
+            }}
+            placeholder="Example: Paracetamol 500mg, Omeprazole 20mg"
+            style={TEXTAREA}
+          />
+
+          <p style={{ margin: "10px 0 0", fontSize: 13 }}>Medicines the patient mentioned</p>
+          <textarea
+            value={mentionDraft}
+            onChange={(e) => {
+              setMentionDraft(e.target.value);
+              setRxSaved(false);
+            }}
+            placeholder="Example: Panadol, a cough syrup"
+            style={TEXTAREA}
+          />
+
+          <div className="chips" style={{ marginTop: 8 }}>
+            <button className="chip on" onClick={saveMedicines}>Save medicines</button>
+          </div>
+          {rxSaved && <p className="muted" style={{ margin: "6px 0 0" }}>Saved.</p>}
+
+          {savedRx.length === 0 && savedMen.length === 0 ? (
+            <p className="muted" style={{ margin: "10px 0 0" }}>No medicines saved yet.</p>
+          ) : (
+            <div style={{ marginTop: 12, lineHeight: 1.6 }}>
+              <p style={{ margin: 0 }}>
+                <strong>In both lists:</strong> {cmp.both.length ? cmp.both.join(", ") : "None"}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Prescribed, not mentioned by patient:</strong>{" "}
+                {cmp.prescribedOnly.length ? cmp.prescribedOnly.join(", ") : "None"}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>Mentioned by patient, not prescribed:</strong>{" "}
+                {cmp.mentionedOnly.length ? cmp.mentionedOnly.join(", ") : "None"}
+              </p>
+              {cmp.mentionedOnly.length > 0 && (
+                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                  Ask the patient about these medicines before you approve.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <Chat
+          title="Message the patient"
+          sender="doctor"
+          messages={current.messages || []}
+          onSend={(list) => onUpdate(current.id, { messages: list })}
+        />
+
         {!editing && (
           <>
             <button className="btn solid" onClick={approve}>APPROVE</button>
@@ -197,7 +283,7 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
           key={r.id}
           className="card-box"
           style={{ width: "100%", textAlign: "left", border: "none", cursor: "pointer", display: "block" }}
-          onClick={() => setOpenId(r.id)}
+          onClick={() => openRecord(r)}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
