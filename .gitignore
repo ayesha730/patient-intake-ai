@@ -170,3 +170,6 @@ uploads/
 # OS and editor junk
 .DS_Store
 Thumbs.db
+
+backend/data.json
+backend/data.json.tmp

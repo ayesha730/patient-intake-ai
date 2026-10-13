@@ -1,46 +1,218 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { buildSummary, checkOutput } from "../lib/summary";
+import { specialtyName } from "../lib/specialties";
+import { translateText } from "../lib/translate";
+import { LANGUAGES } from "../lib/i18n";
 
-const API = "http://127.0.0.1:8000";
-const DOCTOR_ID = 1; // temporary until doctor login is built
+const ORDER = { emergency: 0, uncertain: 1, normal: 2 };
+const URGENCY_LABEL = { emergency: "Emergency", uncertain: "Check", normal: "Normal" };
+const URGENCY_CLASS = { emergency: "urgent", uncertain: "review", normal: "info" };
+const CONF_LABEL = { high: "High", medium: "Medium", low: "Low" };
+const CONF_CLASS = { high: "info", medium: "review", low: "urgent" };
+const GENDER_LABEL = { male: "Male", female: "Female", other: "Other" };
+const REVIEW_LABEL = {
+  pending: "Waiting for review",
+  approved: "Approved",
+  edited: "Edited and approved",
+  rejected: "Rejected",
+};
 
-export default function DoctorPatients() {
-  const [items, setItems] = useState([]);
-  const [error, setError] = useState("");
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-  useEffect(() => {
-    fetch(`${API}/dashboard/doctors/${DOCTOR_ID}/patients`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`server returned ${r.status}`);
-        return r.json();
-      })
-      .then(setItems)
-      .catch((e) => setError(`Could not load patients (${e.message})`));
-  }, []);
+function langName(code) {
+  const found = LANGUAGES.find((l) => l.code === code);
+  return found ? found.label : code;
+}
+
+export default function DoctorPatients({ records = [], alerts = [], onUpdate, profile }) {
+  const [openId, setOpenId] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [warning, setWarning] = useState("");
+
+  const doctorLang = (profile && profile.language) || "en";
+  const current = records.find((r) => r.id === openId);
+
+  const needsInterpreter = (r) =>
+    translateText(r.problem, r.language, doctorLang).status === "needs_interpreter";
+
+  const closeDetail = () => {
+    setOpenId(null);
+    setEditing(false);
+    setWarning("");
+  };
+
+  // ----- Detail view for one patient -----
+  if (current) {
+    const summary = buildSummary(current);
+    const shown = current.summary || summary.restated;
+    const translation = translateText(current.problem, current.language, doctorLang);
+
+    const startEdit = () => {
+      setDraft(shown);
+      setWarning("");
+      setEditing(true);
+    };
+
+    const saveEdit = () => {
+      const hit = checkOutput(draft);
+      if (hit) {
+        setWarning(`Not saved: the text contains diagnostic wording ("${hit}"). Keep to what the patient said.`);
+        return;
+      }
+      onUpdate(current.id, { summary: draft, reviewStatus: "edited" });
+      setEditing(false);
+      setWarning("");
+    };
+
+    const approve = () => onUpdate(current.id, { reviewStatus: "approved" });
+    const reject = () => onUpdate(current.id, { reviewStatus: "rejected" });
+
+    return (
+      <div className="page">
+        <button className="link" onClick={closeDetail}>← Back to patients</button>
+
+        <h2 style={{ marginTop: 12 }}>{current.name || "Patient"}</h2>
+        <p className="muted">
+          Token {current.token ?? "—"} · Age {current.age ?? "—"} · {GENDER_LABEL[current.gender] || "—"}
+        </p>
+        <p className="muted">
+          {formatTime(current.createdAt)} · {specialtyName("en", current.specialty)} ·{" "}
+          {REVIEW_LABEL[current.reviewStatus || "pending"]}
+        </p>
+        <span className={`badge ${URGENCY_CLASS[current.urgency]}`}>{URGENCY_LABEL[current.urgency]}</span>
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+          <div className="card-box" style={{ flex: 1, minWidth: 160, marginTop: 0 }}>
+            <strong>AI summary</strong>
+            <br />
+            <span className={`badge ${CONF_CLASS[summary.confidence]}`}>
+              Confidence: {CONF_LABEL[summary.confidence]}
+            </span>
+
+            {editing ? (
+              <>
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  style={{
+                    width: "100%",
+                    minHeight: 100,
+                    marginTop: 10,
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    padding: 10,
+                    fontFamily: "inherit",
+                  }}
+                />
+                {warning && <p style={{ color: "#c1272d", fontSize: 13 }}>{warning}</p>}
+                <div className="chips">
+                  <button className="chip on" onClick={saveEdit}>Save</button>
+                  <button className="chip" onClick={() => setEditing(false)}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <p style={{ marginTop: 10, lineHeight: 1.5 }}>{shown}</p>
+            )}
+          </div>
+
+          <div className="card-box" style={{ flex: 1, minWidth: 160, marginTop: 0 }}>
+            <strong>Patient's original words</strong>
+            <p className="muted" style={{ margin: "2px 0 0", fontSize: 12 }}>
+              Written in {langName(current.language)}
+            </p>
+            <p dir="auto" style={{ marginTop: 10, lineHeight: 1.5 }}>{current.problem}</p>
+          </div>
+        </div>
+
+        <div className="card-box">
+          <strong>Reading in {langName(doctorLang)}</strong>
+          {translation.status === "same_language" && (
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              The patient wrote in your language.
+            </p>
+          )}
+          {translation.status === "needs_interpreter" && (
+            <>
+              <p style={{ margin: "8px 0" }}>
+                <span className="badge review">Needs interpreter review</span>
+              </p>
+              <p className="muted" style={{ margin: 0 }}>
+                Automatic translation is not connected yet. Read the original words above, or ask an
+                interpreter to check before you approve.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="card-box">
+          <strong>Missing information</strong>
+          <p className="muted" style={{ margin: "6px 0 0" }}>
+            {summary.missing.length ? summary.missing.join(", ") : "None"}
+          </p>
+        </div>
+
+        {!editing && (
+          <>
+            <button className="btn solid" onClick={approve}>APPROVE</button>
+            <div className="chips" style={{ marginTop: 12 }}>
+              <button className="chip" onClick={startEdit}>Edit</button>
+              <button className="chip" onClick={reject}>Reject</button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ----- Patient list -----
+  const sorted = [...records].sort((a, b) => ORDER[a.urgency] - ORDER[b.urgency]);
+  const interpreterCount = records.filter(needsInterpreter).length;
 
   return (
     <div className="page">
-      <h2>Today's patients</h2>
-      <p className="muted">AI summaries are drafts. Check the patient's own words before acting.</p>
+      <h2>Patients</h2>
+      <p className="muted">
+        {records.length} today
+        {interpreterCount > 0 && ` · ${interpreterCount} need an interpreter`}
+      </p>
 
-      {error && <p className="muted">{error}</p>}
-      {!error && items.length === 0 && <p className="muted">No patients booked yet.</p>}
-
-      {items.map((p) => (
-        <div className="card-box" key={p.appointment_id}>
-          <div className="doc-row">
-            <strong>Token {p.token_number}</strong>
-            <span className="muted">{p.slot_time ? p.slot_time.replace("T", " ") : ""}</span>
-          </div>
-
-          <div style={{ margin: "8px 0" }}>
-            {p.urgency === "urgent" && <span className="badge urgent">Urgent</span>}
-            {p.needs_review && <span className="badge review">Needs review</span>}
-            <span className="badge info">Confidence: {p.confidence}</span>
-          </div>
-
-          <p style={{ margin: "6px 0" }}><strong>Summary:</strong> {p.summary}</p>
-          <p className="muted" style={{ margin: 0 }}><strong>Patient's words:</strong> {p.original_text}</p>
+      {alerts.length > 0 && (
+        <div className="card-box" style={{ background: "#fdecec", border: "1px solid #c1272d" }}>
+          <strong style={{ color: "#c1272d" }}>Staff alerts ({alerts.length})</strong>
+          {alerts.map((a, i) => (
+            <p key={i} className="muted" style={{ margin: "6px 0 0" }}>
+              {formatTime(a.time)} · {a.problem}
+            </p>
+          ))}
         </div>
+      )}
+
+      {sorted.length === 0 && <p className="muted">No patients yet.</p>}
+
+      {sorted.map((r) => (
+        <button
+          key={r.id}
+          className="card-box"
+          style={{ width: "100%", textAlign: "left", border: "none", cursor: "pointer", display: "block" }}
+          onClick={() => setOpenId(r.id)}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>{r.name || "Patient"}</strong>{" "}
+              <span className="muted">Token {r.token ?? "—"}</span>
+              <p className="muted" style={{ margin: "2px 0 0" }}>
+                {formatTime(r.createdAt)} · {specialtyName("en", r.specialty)}
+              </p>
+              {needsInterpreter(r) && (
+                <span className="badge review" style={{ marginTop: 6 }}>Needs interpreter</span>
+              )}
+            </div>
+            <span className={`badge ${URGENCY_CLASS[r.urgency]}`}>{URGENCY_LABEL[r.urgency]}</span>
+          </div>
+        </button>
       ))}
     </div>
   );
