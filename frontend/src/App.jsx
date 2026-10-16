@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect,useRef, useState } from "react";
 import "./index.css";
 import Intro from "./screens/Intro";
 import Welcome from "./screens/Welcome";
@@ -30,6 +30,8 @@ const BURGUNDY = "#7a1f2e";
 
 // Address of the local data server (backend/server.js)
 const API_URL = "http://localhost:3001/api/state";
+// Address of the AI check, also on the local server
+const AI_URL = "http://localhost:3001/api/ai/summary";
 // Remembers which record belongs to this browser, so the patient can message the doctor
 const MY_RECORD_KEY = "my-record-id";
 const MAX_AUDIT = 500;
@@ -59,6 +61,22 @@ function readMyRecordId() {
   }
 }
 
+// Asks the AI for a summary and a red-flag check, in any language.
+// Returns null if the AI is unavailable, so the rule-based checks still apply.
+async function askAi(text) {
+  try {
+    const res = await fetch(AI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ problem: text }),
+    });
+    const data = await res.json();
+    return data.ok === true ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState("intro");
   const [role, setRole] = useState("patient");
@@ -67,6 +85,7 @@ export default function App() {
   const [booking, setBooking] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [emergencyNotice, setEmergencyNotice] = useState(false);
   const [records, setRecords] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -77,6 +96,7 @@ export default function App() {
   // Becomes true only after the saved data has loaded. This stops the app
   // from saving empty data over the real data before it arrives.
   const [loaded, setLoaded] = useState(false);
+  const submitting = useRef(false);
 
   // Load saved data from the local server once, when the app starts
   useEffect(() => {
@@ -154,6 +174,7 @@ export default function App() {
     setBooking(false);
     setIntakeOpen(false);
     setChatOpen(false);
+    setEmergencyNotice(false);
     setScreen("app");
   };
 
@@ -162,13 +183,14 @@ export default function App() {
     setBooking(false);
     setIntakeOpen(false);
     setChatOpen(false);
+    setEmergencyNotice(false);
     setScreen("welcome");
   };
 
   // Saves the doctor's profile and adds or updates the doctor in the patient's list
   const handleSaveProfile = (profile) => {
     setDoctorProfile(profile);
-    const id = `h-${profile.hospitalId.trim()}`;
+    const id = "h-" + profile.hospitalId.trim();
     setDoctors((list) => {
       const existing = list.find((d) => d.id === id);
       const entry = {
@@ -187,10 +209,23 @@ export default function App() {
     });
   };
 
-  // Called when the patient finishes intake
-  const handleIntakeDone = (record) => {
+  // Called when the patient finishes intake. The AI writes the summary and checks for emergencies.
+  // This may take a few seconds.
+  const handleIntakeDone = async (record) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    const id = "r" + Date.now();
+
+    const ai = await askAi(record.problem);
+    const aiSaysEmergency = Boolean(ai && ai.redFlag);
+    const urgency = record.urgency === "emergency" || aiSaysEmergency ? "emergency" : record.urgency;
+    const aiFields = ai
+      ? { aiSummary: ai.summary, aiConfidence: ai.confidence, aiRedFlag: ai.redFlag }
+      : {};
+    const finalRecord = { ...record, urgency, ...aiFields };
+    submitting.current = false;
+
     setIntakeOpen(false);
-    const id = "r" + Date.now()
 
     // Remember that this browser belongs to this record
     try {
@@ -200,19 +235,23 @@ export default function App() {
     }
     setMyRecordId(id);
 
-    if (record.urgency === "emergency") {
-      const entry = { ...record, id, token: null, reviewStatus: "pending", messages: [] };
+    if (urgency === "emergency") {
+      const entry = { ...finalRecord, id, token: null, reviewStatus: "pending", messages: [] };
       setRecords((r) => [...r, entry]);
       setAlerts((a) => [
         ...a,
         { time: record.createdAt, text: "Emergency symptoms reported", problem: record.problem },
       ]);
       logEvent("patient", "Emergency symptoms reported", entry);
+      if (aiSaysEmergency && record.urgency !== "emergency") {
+        logEvent("system", "AI flagged possible emergency words", entry);
+      }
+      setEmergencyNotice(true);
       return;
     }
 
     const entry = {
-      ...record,
+      ...finalRecord,
       id,
       token: records.length + 1,
       reviewStatus: "pending",
@@ -263,6 +302,18 @@ export default function App() {
         onSwitch={() => setScreen("signin")}
       />
     );
+  } else if (emergencyNotice) {
+    content = (
+      <div className="page">
+        <h2>Please get help now</h2>
+        <p>
+          Your words may describe an emergency. Call emergency services or go to the nearest
+          emergency unit now. Do not wait for a booking.
+        </p>
+        <p className="muted">The clinic staff have been alerted.</p>
+        <button className="btn solid" onClick={() => setEmergencyNotice(false)}>OK</button>
+      </div>
+    );
   } else if (intakeOpen) {
     content = <Intake onBack={() => setIntakeOpen(false)} onComplete={handleIntakeDone} />;
   } else if (booking) {
@@ -300,7 +351,7 @@ export default function App() {
   const wrapperClass =
     screen === "app" ? "screen dive" : GRADIENT_SCREENS.includes(screen) ? "screen grad" : "screen";
 
-  const showNav = screen === "app" && !booking && !intakeOpen && !chatOpen;
+  const showNav = screen === "app" && !booking && !intakeOpen && !chatOpen && !emergencyNotice;
   const showMessageButton = showNav && role === "patient" && chatRecord;
 
   return (
@@ -308,7 +359,7 @@ export default function App() {
       <div
         className={wrapperClass}
         style={{ "--dir": dir }}
-        key={screen === "app" ? role + "-" + tab + "-" + booking + "-" + intakeOpen + "-" + chatOpen : screen}
+        key={screen === "app" ? role + "-" + tab + "-" + booking + "-" + intakeOpen + "-" + chatOpen + "-" + emergencyNotice : screen}
       >
         {content}
       </div>
@@ -341,7 +392,7 @@ export default function App() {
             {tabs.map((t) => (
               <button
                 key={t.id}
-                className={tab === t.id ? "active" : "tab"}
+                className={tab === t.id ? "tab active" : "tab"}
                 onClick={() => changeTab(t.id)}
               >
                 <span className="tab-icon">{t.icon}</span>

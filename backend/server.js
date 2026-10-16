@@ -1,8 +1,9 @@
 // Local data server. Stores patient and doctor data in backend/data.json
-// so every browser on this computer (and, on the same network, others) sees the same data.
+// and forwards AI summary requests to Token Factory (through ai.js).
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { askModel, parseJson, SUMMARY_PROMPT, isConfigured } = require("./ai");
 
 const PORT = 3001;
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -20,34 +21,75 @@ function readState() {
 function writeState(state) {
   const tmp = DATA_FILE + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-  fs.renameSync(tmp, DATA_FILE); // write to a temp file first, so a crash cannot corrupt data
+  fs.renameSync(tmp, DATA_FILE);
 }
 
 function send(res, code, body) {
   res.writeHead(code, {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
   });
   if (code === 204) return res.end();
   res.end(JSON.stringify(body));
 }
 
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 5000000) {
+        req.destroy();
+        reject(new Error("too large"));
+      }
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
+// Asks the AI for a summary. The app shows the result only after the doctor clicks a button.
+async function handleSummary(req, res) {
+  let input;
+  try {
+    input = JSON.parse(await readBody(req));
+  } catch {
+    return send(res, 400, { error: "bad data" });
+  }
+
+  const text = String(input.problem || "").slice(0, 2000);
+  if (!text.trim()) return send(res, 400, { error: "no text" });
+  if (!isConfigured()) return send(res, 200, { ok: false, reason: "AI is not set up yet" });
+
+  const reply = await askModel(SUMMARY_PROMPT, text);
+  const parsed = parseJson(reply);
+  if (!parsed) return send(res, 200, { ok: false, reason: "AI did not answer" });
+
+  send(res, 200, {
+    ok: true,
+    summary: String(parsed.summary || "").slice(0, 500),
+    confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
+    redFlag: parsed.red_flag === true,
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") return send(res, 204, {});
+
+  if (req.url === "/api/ai/summary") {
+    if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
+    return handleSummary(req, res).catch(() => send(res, 500, { error: "server error" }));
+  }
+
   if (req.url !== "/api/state") return send(res, 404, { error: "not found" });
 
   if (req.method === "GET") return send(res, 200, readState());
 
   if (req.method === "PUT") {
-    let body = "";
-    req.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 5_000_000) req.destroy(); // refuse huge requests
-    });
-    req.on("end", () => {
-      try {
+    readBody(req)
+      .then((body) => {
         const incoming = JSON.parse(body);
         writeState({
           records: Array.isArray(incoming.records) ? incoming.records : [],
@@ -57,10 +99,8 @@ const server = http.createServer((req, res) => {
           audit: Array.isArray(incoming.audit) ? incoming.audit.slice(-MAX_AUDIT) : [],
         });
         send(res, 200, { ok: true });
-      } catch {
-        send(res, 400, { error: "bad data" });
-      }
-    });
+      })
+      .catch(() => send(res, 400, { error: "bad data" }));
     return;
   }
 
@@ -68,5 +108,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Data server running at http://localhost:${PORT}`);
+  console.log("Data server running at http://localhost:" + PORT);
 });
