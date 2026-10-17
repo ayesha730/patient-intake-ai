@@ -21,7 +21,7 @@ const CHAT_PROMPT = [
   "If the patient describes a possible emergency (for example chest pain, trouble breathing, fainting, heavy bleeding, stroke signs), set red_flag to true and tell them to call emergency services now.",
   "When you have enough information, or the patient asks for a result, set done to true.",
   "When done is true, write a short reply that repeats what you understood, says which doctor to see, and says a doctor will check any medicine and food suggestions before they are shown to the patient.",
-  "When done is true, fill suggestions with up to 4 medicines and up to 4 foods a doctor could consider. Medicine names must be generic names only, with no dose, no strength and no how-often. Food suggestions are general, for example drink water, eat light food, avoid fried food. Give each suggestion a short reason.",
+  "When done is true, fill suggestions with up to 4 medicines, up to 4 foods, and up to 2 medical tests a doctor could consider (for example a blood test). Test names are general, with no instructions on how to interpret results.",
   "When done is false, suggestions must be an empty list.",
   'Reply with JSON only, in this form: {"reply": "your message", "specialty": "General Physician", "red_flag": false, "done": false, "suggestions": [{"type": "medicine", "name": "name", "reason": "why"}]}',
   "Use specialty General Physician, Cardiology, or Dermatology when done is true. Otherwise use null.",
@@ -71,13 +71,13 @@ function readBody(req) {
 function cleanSuggestions(list) {
   if (!Array.isArray(list)) return [];
   return list
-    .filter((s) => s && (s.type === "medicine" || s.type === "food") && String(s.name || "").trim())
+    .filter((s) => s && (s.type === "medicine" || s.type === "food" || s.type === "test")
     .slice(0, 8)
     .map((s) => ({
       type: s.type,
       name: String(s.name).trim().slice(0, 60),
       reason: String(s.reason || "").trim().slice(0, 200),
-    }));
+    })));
 }
 
 // Summary for the doctor, written when the patient finishes intake
@@ -139,11 +139,20 @@ async function handleChat(req, res) {
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") return send(res, 204, {});
 
+  if (req.url === "/api/ai/status" && req.method === "GET") {
+    return send(res, 200, {
+      configured: isConfigured(),
+      provider: "AMD Token Factory",
+      model: process.env.TOKEN_FACTORY_MODEL || "unknown",
+    });
+  }
+  
   if (req.url === "/api/ai/summary" || req.url === "/api/ai/chat") {
     if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
     const handler = req.url === "/api/ai/chat" ? handleChat : handleSummary;
     return handler(req, res).catch(() => send(res, 500, { error: "server error" }));
   }
+
 
   if (req.url !== "/api/state") return send(res, 404, { error: "not found" });
 

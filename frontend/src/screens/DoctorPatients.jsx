@@ -1,3 +1,7 @@
+import AccuracyPanel from "../components/AccuracyPanel";
+import ReadingCard from "../components/ReadingCard";
+import MedicineCompare from "../components/MedicineCompare";
+import { FeedbackView } from "../components/Feedback";
 import Attachments from "../components/Attachments";
 import SuggestionReview from "../components/SuggestionReview";
 import { useState } from "react";
@@ -191,6 +195,10 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
         )}
 
         <details style={CARD}>
+          <AccuracyPanel records={records} />
+          <ReadingCard record={current} />
+          <MedicineCompare record={current} onUpdate={onUpdate} />
+          <FeedbackView record={current} onUpdate={onUpdate} />
           <Attachments title="Patient reports" files={current.attachments || []} canAdd={false} />
           <SuggestionReview record={current} onUpdate={onUpdate} />
           <summary style={{ fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Show more</summary>
