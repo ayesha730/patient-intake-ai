@@ -18,6 +18,7 @@ import Attachments from "./components/Attachments";
 import AiStatus from "./components/AiStatus";
 import { PatientFeedback } from "./components/Feedback";
 import { DOCTORS } from "./lib/doctors";
+import { API_BASE } from "./lib/config";
 
 const TABS = {
   patient: [
@@ -35,9 +36,9 @@ const GRADIENT_SCREENS = ["intro", "welcome", "signin", "signup"];
 const BURGUNDY = "#7a1f2e";
 
 // Address of the local data server (backend/server.js)
-const API_URL = "http://localhost:3001/api/state";
+const API_URL = API_BASE + "/api/state";
 // Address of the AI summary, also on the local server
-const AI_URL = "http://localhost:3001/api/ai/summary";
+const AI_URL = API_BASE + "/api/ai/summary";
 // Remembers which record belongs to this browser, so the patient can message the doctor
 const MY_RECORD_KEY = "my-record-id";
 const MAX_AUDIT = 500;
