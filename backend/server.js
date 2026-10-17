@@ -6,7 +6,7 @@ const path = require("path");
 const { askModel, parseJson, SUMMARY_PROMPT, isConfigured } = require("./ai");
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+
 const DATA_FILE = path.join(__dirname, "data.json");
 const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null, audit: [] };
 const MAX_AUDIT = 500;
