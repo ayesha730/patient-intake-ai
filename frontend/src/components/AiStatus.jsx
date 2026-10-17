@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import { API_BASE } from "../lib/config";
 
 // Shows whether the AI is connected, and which model runs it
 export default function AiStatus() {
   const [info, setInfo] = useState(null);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/ai/status")
+    fetch(API_BASE + "/api/ai/status")
       .then((r) => r.json())
       .then(setInfo)
       .catch(() => setInfo({ configured: false }));

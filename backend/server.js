@@ -5,11 +5,34 @@ const fs = require("fs");
 const path = require("path");
 const { askModel, parseJson, SUMMARY_PROMPT, isConfigured } = require("./ai");
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const DATA_FILE = path.join(__dirname, "data.json");
 const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null, audit: [] };
 const MAX_AUDIT = 500;
 const SPECIALTIES = ["General Physician", "Cardiology", "Dermatology"];
+// Serves the built app (frontend/dist) when the app is live
+const STATIC_DIR = path.join(__dirname, "..", "frontend", "dist");
+const MIME = {
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".json": "application/json",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
+
+function serveFrontend(req, res) {
+  const cleanPath = decodeURIComponent(req.url.split("?")[0]);
+  let file = path.join(STATIC_DIR, cleanPath);
+  if (!file.startsWith(STATIC_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    file = path.join(STATIC_DIR, "index.html");
+  }
+  if (!fs.existsSync(file)) return send(res, 404, { error: "not found" });
+  res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
+  fs.createReadStream(file).pipe(res);
+}
 
 // The AI talks to the patient and proposes medicine and food. A doctor approves or rejects every suggestion.
 const CHAT_PROMPT = [
@@ -139,6 +162,7 @@ async function handleChat(req, res) {
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") return send(res, 204, {});
 
+  if (req.method === "GET" && !req.url.startsWith("/api/")) return serveFrontend(req, res);
   if (req.url === "/api/ai/status" && req.method === "GET") {
     return send(res, 200, {
       configured: isConfigured(),

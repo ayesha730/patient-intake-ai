@@ -1,6 +1,7 @@
 import { useState } from "react";
+import {API_BASE } from "../lib/config";
 
-const CHAT_URL = "http://localhost:3001/api/ai/chat";
+const CHAT_URL = API_BASE + "/api/ai/chat";
 const BURGUNDY = "#7a1f2e";
 
 export default function SymptomChat({ messages = [], onChange, onBack, onContinue }) {
