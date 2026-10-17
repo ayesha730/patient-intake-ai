@@ -1,3 +1,5 @@
+import Attachments from "../components/Attachments";
+import SuggestionReview from "../components/SuggestionReview";
 import { useState } from "react";
 import { buildSummary, checkOutput } from "../lib/summary";
 import { specialtyName } from "../lib/specialties";
@@ -189,6 +191,8 @@ export default function DoctorPatients({ records = [], alerts = [], onUpdate, pr
         )}
 
         <details style={CARD}>
+          <Attachments title="Patient reports" files={current.attachments || []} canAdd={false} />
+          <SuggestionReview record={current} onUpdate={onUpdate} />
           <summary style={{ fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Show more</summary>
 
           <div style={{ marginTop: 14 }}>

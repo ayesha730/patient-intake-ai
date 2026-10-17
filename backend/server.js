@@ -1,5 +1,5 @@
 // Local data server. Stores patient and doctor data in backend/data.json
-// and forwards AI summary requests to Token Factory (through ai.js).
+// and forwards AI requests to Token Factory (through ai.js).
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -9,6 +9,23 @@ const PORT = 3001;
 const DATA_FILE = path.join(__dirname, "data.json");
 const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null, audit: [] };
 const MAX_AUDIT = 500;
+const SPECIALTIES = ["General Physician", "Cardiology", "Dermatology"];
+
+// The AI talks to the patient and proposes medicine and food. A doctor approves or rejects every suggestion.
+const CHAT_PROMPT = [
+  "You are a health information helper before a clinic visit. You are not a doctor.",
+  "Reply in the same language the patient uses.",
+  "Ask at most one short question at a time, about how long the problem has lasted, how severe it is from 1 to 10, and any other symptoms.",
+  "Never name a disease or diagnosis.",
+  "Your reply text must not name any medicine or food. Put those only in the suggestions list.",
+  "If the patient describes a possible emergency (for example chest pain, trouble breathing, fainting, heavy bleeding, stroke signs), set red_flag to true and tell them to call emergency services now.",
+  "When you have enough information, or the patient asks for a result, set done to true.",
+  "When done is true, write a short reply that repeats what you understood, says which doctor to see, and says a doctor will check any medicine and food suggestions before they are shown to the patient.",
+  "When done is true, fill suggestions with up to 4 medicines and up to 4 foods a doctor could consider. Medicine names must be generic names only, with no dose, no strength and no how-often. Food suggestions are general, for example drink water, eat light food, avoid fried food. Give each suggestion a short reason.",
+  "When done is false, suggestions must be an empty list.",
+  'Reply with JSON only, in this form: {"reply": "your message", "specialty": "General Physician", "red_flag": false, "done": false, "suggestions": [{"type": "medicine", "name": "name", "reason": "why"}]}',
+  "Use specialty General Physician, Cardiology, or Dermatology when done is true. Otherwise use null.",
+].join(" ");
 
 function readState() {
   try {
@@ -40,7 +57,7 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 5000000) {
+      if (body.length > 20000000) {
         req.destroy();
         reject(new Error("too large"));
       }
@@ -50,7 +67,20 @@ function readBody(req) {
   });
 }
 
-// Asks the AI for a summary. The app shows the result only after the doctor clicks a button.
+// Keeps only well-formed suggestions and limits their size
+function cleanSuggestions(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((s) => s && (s.type === "medicine" || s.type === "food") && String(s.name || "").trim())
+    .slice(0, 8)
+    .map((s) => ({
+      type: s.type,
+      name: String(s.name).trim().slice(0, 60),
+      reason: String(s.reason || "").trim().slice(0, 200),
+    }));
+}
+
+// Summary for the doctor, written when the patient finishes intake
 async function handleSummary(req, res) {
   let input;
   try {
@@ -75,12 +105,44 @@ async function handleSummary(req, res) {
   });
 }
 
+// Chat before booking: the patient and the AI talk, one question at a time
+async function handleChat(req, res) {
+  let input;
+  try {
+    input = JSON.parse(await readBody(req));
+  } catch {
+    return send(res, 400, { error: "bad data" });
+  }
+
+  const list = Array.isArray(input.messages) ? input.messages.slice(-12) : [];
+  const transcript = list
+    .map((m) => (m.from === "ai" ? "AI" : "Patient") + ": " + String(m.text || "").slice(0, 1000))
+    .join("\n");
+  if (!transcript.trim()) return send(res, 400, { error: "no text" });
+  if (!isConfigured()) return send(res, 200, { ok: false, reason: "AI is not set up yet" });
+
+  const reply = await askModel(CHAT_PROMPT, transcript);
+  const parsed = parseJson(reply);
+  if (!parsed) return send(res, 200, { ok: false, reason: "AI did not answer" });
+
+  const done = parsed.done === true;
+  send(res, 200, {
+    ok: true,
+    reply: String(parsed.reply || "").slice(0, 1200),
+    specialty: SPECIALTIES.includes(parsed.specialty) ? parsed.specialty : null,
+    redFlag: parsed.red_flag === true,
+    done,
+    suggestions: done ? cleanSuggestions(parsed.suggestions) : [],
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") return send(res, 204, {});
 
-  if (req.url === "/api/ai/summary") {
+  if (req.url === "/api/ai/summary" || req.url === "/api/ai/chat") {
     if (req.method !== "POST") return send(res, 405, { error: "method not allowed" });
-    return handleSummary(req, res).catch(() => send(res, 500, { error: "server error" }));
+    const handler = req.url === "/api/ai/chat" ? handleChat : handleSummary;
+    return handler(req, res).catch(() => send(res, 500, { error: "server error" }));
   }
 
   if (req.url !== "/api/state") return send(res, 404, { error: "not found" });

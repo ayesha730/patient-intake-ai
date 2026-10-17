@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import "./index.css";
 import Intro from "./screens/Intro";
@@ -10,7 +11,9 @@ import Book from "./screens/Book";
 import DoctorPatients from "./screens/DoctorPatients";
 import DoctorProfile from "./screens/DoctorProfile";
 import Queue from "./screens/Queue";
+import SymptomChat from "./screens/SymptomChat";
 import Chat from "./components/Chat";
+import Attachments from "./components/Attachments";
 import { DOCTORS } from "./lib/doctors";
 
 const TABS = {
@@ -28,8 +31,11 @@ const TABS = {
 const GRADIENT_SCREENS = ["intro", "welcome", "signin", "signup"];
 const BURGUNDY = "#7a1f2e";
 
+// Address of the local data server (backend/server.js)
 const API_URL = "http://localhost:3001/api/state";
+// Address of the AI summary, also on the local server
 const AI_URL = "http://localhost:3001/api/ai/summary";
+// Remembers which record belongs to this browser, so the patient can message the doctor
 const MY_RECORD_KEY = "my-record-id";
 const MAX_AUDIT = 500;
 
@@ -58,6 +64,8 @@ function readMyRecordId() {
   }
 }
 
+// Asks the AI for a summary and a red-flag check, in any language.
+// Returns null if the AI is unavailable, so the rule-based checks still apply.
 async function askAi(text) {
   try {
     const res = await fetch(AI_URL, {
@@ -72,15 +80,60 @@ async function askAi(text) {
   }
 }
 
+// Shows the patient every AI suggestion and whether the doctor approved, rejected, or has not reviewed it yet
+function PatientAdvice({ record }) {
+  const items = record.aiSuggestions || [];
+  if (items.length === 0) return null;
+
+  const STATUS = {
+    approved: { text: "Approved by your doctor", color: "#2e7d32" },
+    rejected: { text: "Rejected by your doctor", color: "#c1272d" },
+    pending: { text: "Waiting for your doctor", color: "#666" },
+  };
+
+  const medicines = items.filter((s) => s.type === "medicine");
+  const foods = items.filter((s) => s.type === "food");
+
+  const renderGroup = (title, list) => {
+    if (list.length === 0) return null;
+    return (
+      <div style={{ marginTop: 8 }}>
+        <p style={{ marginBottom: 4 }}><strong>{title}</strong></p>
+        {list.map((s, i) => {
+          const st = STATUS[s.status] || STATUS.pending;
+          return (
+            <div key={i} style={{ borderTop: "1px solid #eee", padding: "6px 0" }}>
+              <div><strong>{s.name}</strong></div>
+              <div style={{ fontSize: 14, color: st.color }}>{st.text}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="card-box" style={{ marginBottom: 12 }}>
+      <strong style={{ fontSize: 16 }}>Advice from your doctor</strong>
+      {renderGroup("Medicine", medicines)}
+      {renderGroup("Food and drink", foods)}
+      <p className="muted" style={{ marginTop: 8 }}>
+        Ask your doctor about the dose before you take any medicine.
+      </p>
+    </div>
+  );
+}
 export default function App() {
   const [screen, setScreen] = useState("intro");
   const [role, setRole] = useState("patient");
   const [tab, setTab] = useState("home");
   const [dir, setDir] = useState(1);
   const [booking, setBooking] = useState(false);
+  const [symptomOpen, setSymptomOpen] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [emergencyNotice, setEmergencyNotice] = useState(false);
+  const [aiChat, setAiChat] = useState([]);
   const [records, setRecords] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -88,9 +141,13 @@ export default function App() {
   const [myRecordId, setMyRecordId] = useState(readMyRecordId);
   const [doctorProfile, setDoctorProfile] = useState(EMPTY_DOCTOR_PROFILE);
   const [doctors, setDoctors] = useState(DOCTORS);
+  // Becomes true only after the saved data has loaded. This stops the app
+  // from saving empty data over the real data before it arrives.
   const [loaded, setLoaded] = useState(false);
+  // Blocks a second Finish click while the AI is working
   const submitting = useRef(false);
 
+  // Load saved data from the local server once, when the app starts
   useEffect(() => {
     let cancelled = false;
     fetch(API_URL)
@@ -107,19 +164,41 @@ export default function App() {
         if (saved.doctorProfile) setDoctorProfile(saved.doctorProfile);
         setLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Server is not running. The app still works, but nothing is saved.
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+  // Re-read the saved data every 4 seconds, so the patient sees the doctor's changes
+  useEffect(() => {
+    if (!loaded) return;
+    const timer = setInterval(() => {
+      fetch(API_URL)
+        .then((res) => res.json())
+        .then((saved) => {
+          setRecords(saved.records || []);
+          setAlerts(saved.alerts || []);
+          setAudit(saved.audit || []);
+        })
+        .catch(() => {
+          // Server stopped. Keep showing what is on screen.
+        });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [loaded]);
 
+  // Send everything to the local server whenever it changes
   useEffect(() => {
     if (!loaded) return;
     fetch(API_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ records, alerts, doctors, doctorProfile, audit }),
-    }).catch(() => {});
+    }).catch(() => {
+      // Server stopped. Data stays on screen but is not saved this time.
+    });
   }, [loaded, records, alerts, doctors, doctorProfile, audit]);
 
   useEffect(() => {
@@ -132,8 +211,10 @@ export default function App() {
   const tabIndex = Math.max(0, tabs.findIndex((t) => t.id === tab));
   const Active = tabs[tabIndex].Screen;
 
+  // The patient's own record, read fresh from the list (so new messages and advice show)
   const chatRecord = records.find((r) => r.id === myRecordId) || null;
 
+  // Adds one line to the activity log. Only the name and token are kept, not the patient's words.
   const logEvent = (who, action, record) => {
     const entry = {
       time: new Date().toISOString(),
@@ -157,20 +238,24 @@ export default function App() {
     setTab(TABS[r][0].id);
     setDir(1);
     setBooking(false);
+    setSymptomOpen(false);
     setIntakeOpen(false);
     setChatOpen(false);
     setEmergencyNotice(false);
     setScreen("app");
   };
 
+  // Returns to the welcome screen. Saved data stays.
   const signOut = () => {
     setBooking(false);
+    setSymptomOpen(false);
     setIntakeOpen(false);
     setChatOpen(false);
     setEmergencyNotice(false);
     setScreen("welcome");
   };
 
+  // Saves the doctor's profile and adds or updates the doctor in the patient's list
   const handleSaveProfile = (profile) => {
     setDoctorProfile(profile);
     const id = "h-" + profile.hospitalId.trim();
@@ -192,40 +277,42 @@ export default function App() {
     });
   };
 
+  // Called when the patient finishes intake. The AI writes the summary and checks for emergencies.
+  // The chat and the AI suggestions are saved with the record, so the doctor can review them.
   const handleIntakeDone = async (record) => {
     if (submitting.current) return;
     submitting.current = true;
+
     const id = "r" + Date.now();
 
     const ai = await askAi(record.problem);
-    const aiSaysEmergency = Boolean(ai && ai.redFlag);
-    const urgency = record.urgency === "emergency" || aiSaysEmergency ? "emergency" : record.urgency;
-    
-    const aiFields = ai
-      ? { 
-          aiSummary: ai.summary, 
-          aiConfidence: ai.confidence, 
-          aiRedFlag: ai.redFlag,
-          medicines: ai.medicines || [
-            { id: "m1", name: "Paracetamol 500mg", dosage: "1-0-1 after meals", status: "pending" }
-          ],
-          diet_plan: ai.diet_plan || [
-            { id: "d1", recommendation: "Warm fluids and light diet", status: "pending" }
-          ]
-        }
-      : {
-          medicines: [{ id: "m1", name: "Paracetamol 500mg", dosage: "1-0-1 after meals", status: "pending" }],
-          diet_plan: [{ id: "d1", recommendation: "Hydration and rest", status: "pending" }]
-        };
-
-    const finalRecord = { ...record, urgency, ...aiFields };
     submitting.current = false;
 
-    setIntakeOpen(false);
+    const aiSaysEmergency = Boolean(ai && ai.redFlag);
+    const urgency = record.urgency === "emergency" || aiSaysEmergency ? "emergency" : record.urgency;
+    const aiFields = ai
+      ? { aiSummary: ai.summary, aiConfidence: ai.confidence, aiRedFlag: ai.redFlag }
+      : {};
 
+    // Use the latest AI suggestions from the chat. Each one waits for the doctor.
+    const latestAi = [...aiChat]
+      .reverse()
+      .find((m) => m.from === "ai" && m.suggestions && m.suggestions.length > 0);
+    const aiSuggestions = latestAi
+      ? latestAi.suggestions.map((s) => ({ ...s, status: "pending" }))
+      : [];
+
+    const finalRecord = { ...record, urgency, ...aiFields, aiChat, aiSuggestions };
+
+    setIntakeOpen(false);
+    setAiChat([]);
+
+    // Remember that this browser belongs to this record
     try {
       localStorage.setItem(MY_RECORD_KEY, id);
-    } catch {}
+    } catch {
+      // Storage blocked. Messaging still works until the page is closed.
+    }
     setMyRecordId(id);
 
     if (urgency === "emergency") {
@@ -236,6 +323,9 @@ export default function App() {
         { time: record.createdAt, text: "Emergency symptoms reported", problem: record.problem },
       ]);
       logEvent("patient", "Emergency symptoms reported", entry);
+      if (aiSaysEmergency && record.urgency !== "emergency") {
+        logEvent("system", "AI flagged possible emergency words", entry);
+      }
       setEmergencyNotice(true);
       return;
     }
@@ -244,7 +334,7 @@ export default function App() {
       ...finalRecord,
       id,
       token: records.length + 1,
-      reviewStatus: "pending_review",
+      reviewStatus: "pending",
       messages: [],
     };
     setRecords((r) => [...r, entry]);
@@ -253,15 +343,20 @@ export default function App() {
     logEvent("patient", "Intake completed and booked", entry);
   };
 
+  // Used by the doctor to approve, edit, or reject a summary and suggestions, and by both sides to message
   const handleUpdate = (id, patch) => {
     const rec = records.find((r) => r.id === id);
     setRecords((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
     if (!rec) return;
     if (patch.reviewStatus) {
-      logEvent("doctor", REVIEW_ACTION[patch.reviewStatus] || "Doctor updated review status", rec);
-    } else if (patch.medicines || patch.diet_plan) {
-      logEvent("doctor", "Doctor updated prescription/diet recommendations", rec);
+      logEvent("doctor", REVIEW_ACTION[patch.reviewStatus] || "Doctor changed review status", rec);
+    } else if (patch.prescription || patch.patientMedicines) {
+      logEvent("doctor", "Doctor saved medicines", rec);
+    } else if (patch.attachments) {
+      logEvent("patient", "Patient attached a file", rec);
+    } else if (patch.aiSuggestions) {
+      logEvent("doctor", "Doctor reviewed AI suggestions", rec);
     } else if (patch.messages && patch.messages.length > 0) {
       const last = patch.messages[patch.messages.length - 1];
       logEvent(last.from, last.from === "doctor" ? "Doctor sent a message" : "Patient sent a message", rec);
@@ -303,6 +398,18 @@ export default function App() {
         <button className="btn solid" onClick={() => setEmergencyNotice(false)}>OK</button>
       </div>
     );
+  } else if (symptomOpen) {
+    content = (
+      <SymptomChat
+        messages={aiChat}
+        onChange={setAiChat}
+        onBack={() => setSymptomOpen(false)}
+        onContinue={() => {
+          setSymptomOpen(false);
+          setIntakeOpen(true);
+        }}
+      />
+    );
   } else if (intakeOpen) {
     content = <Intake onBack={() => setIntakeOpen(false)} onComplete={handleIntakeDone} />;
   } else if (booking) {
@@ -313,6 +420,13 @@ export default function App() {
     content = (
       <div className="page">
         <h2>Messages</h2>
+        <PatientAdvice record={chatRecord} />
+        <Attachments
+          title="Your reports"
+          files={chatRecord.attachments || []}
+          canAdd={true}
+          onAdd={(list) => handleUpdate(chatRecord.id, { attachments: list })}
+        />
         <p className="muted">Write to your doctor here. For a medical emergency, call emergency services.</p>
         <Chat
           title="Your doctor"
@@ -326,7 +440,7 @@ export default function App() {
   } else {
     content = (
       <Active
-        onBook={() => setIntakeOpen(true)}
+        onBook={() => setSymptomOpen(true)}
         records={records}
         alerts={alerts}
         audit={audit}
@@ -340,7 +454,8 @@ export default function App() {
   const wrapperClass =
     screen === "app" ? "screen dive" : GRADIENT_SCREENS.includes(screen) ? "screen grad" : "screen";
 
-  const showNav = screen === "app" && !booking && !intakeOpen && !chatOpen && !emergencyNotice;
+  const showNav =
+    screen === "app" && !booking && !symptomOpen && !intakeOpen && !chatOpen && !emergencyNotice;
   const showMessageButton = showNav && role === "patient" && chatRecord;
 
   return (
@@ -348,7 +463,7 @@ export default function App() {
       <div
         className={wrapperClass}
         style={{ "--dir": dir }}
-        key={screen === "app" ? role + "-" + tab + "-" + booking + "-" + intakeOpen + "-" + chatOpen + "-" + emergencyNotice : screen}
+        key={screen === "app" ? role + "-" + tab + "-" + booking + "-" + symptomOpen + "-" + intakeOpen + "-" + chatOpen + "-" + emergencyNotice : screen}
       >
         {content}
       </div>
