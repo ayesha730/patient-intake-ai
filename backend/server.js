@@ -6,6 +6,7 @@ const path = require("path");
 const { askModel, parseJson, SUMMARY_PROMPT, isConfigured } = require("./ai");
 
 const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Running on port ${PORT}`));
 const DATA_FILE = path.join(__dirname, "data.json");
 const EMPTY = { records: [], alerts: [], doctors: [], doctorProfile: null, audit: [] };
 const MAX_AUDIT = 500;
@@ -35,7 +36,7 @@ function serveFrontend(req, res) {
 }
 
 // The AI talks to the patient and proposes medicine and food. A doctor approves or rejects every suggestion.
-const CHAT_PROMPT = [
+const PROMPT = [
   "You are a health information helper before a clinic visit. You are not a doctor.",
   "Reply in the same language the patient uses.",
   "Ask at most one short question at a time, about how long the problem has lasted, how severe it is from 1 to 10, and any other symptoms.",
