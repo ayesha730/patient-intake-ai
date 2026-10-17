@@ -12,8 +12,11 @@ import DoctorPatients from "./screens/DoctorPatients";
 import DoctorProfile from "./screens/DoctorProfile";
 import Queue from "./screens/Queue";
 import SymptomChat from "./screens/SymptomChat";
+import Consent from "./screens/Consent";
 import Chat from "./components/Chat";
 import Attachments from "./components/Attachments";
+import AiStatus from "./components/AiStatus";
+import { PatientFeedback } from "./components/Feedback";
 import { DOCTORS } from "./lib/doctors";
 
 const TABS = {
@@ -79,7 +82,10 @@ async function askAi(text) {
     return null;
   }
 }
-
+// Counts patients with a lower token whose treatment is not finished yet
+function patientsAhead(records, token) {
+  return records.filter((r) => r.token != null && r.token < token && !r.treatmentDone).length;
+}
 // Shows the patient every AI suggestion and whether the doctor approved, rejected, or has not reviewed it yet
 function PatientAdvice({ record }) {
   const items = record.aiSuggestions || [];
@@ -93,6 +99,7 @@ function PatientAdvice({ record }) {
 
   const medicines = items.filter((s) => s.type === "medicine");
   const foods = items.filter((s) => s.type === "food");
+  const tests = items.filter((s) => s.type === "test");
 
   const renderGroup = (title, list) => {
     if (list.length === 0) return null;
@@ -117,6 +124,7 @@ function PatientAdvice({ record }) {
       <strong style={{ fontSize: 16 }}>Advice from your doctor</strong>
       {renderGroup("Medicine", medicines)}
       {renderGroup("Food and drink", foods)}
+      {renderGroup("Medical tests", tests)}
       <p className="muted" style={{ marginTop: 8 }}>
         Ask your doctor about the dose before you take any medicine.
       </p>
@@ -130,6 +138,8 @@ export default function App() {
   const [dir, setDir] = useState(1);
   const [booking, setBooking] = useState(false);
   const [symptomOpen, setSymptomOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [patientInfo, setPatientInfo] = useState(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [emergencyNotice, setEmergencyNotice] = useState(false);
@@ -302,10 +312,12 @@ export default function App() {
       ? latestAi.suggestions.map((s) => ({ ...s, status: "pending" }))
       : [];
 
-    const finalRecord = { ...record, urgency, ...aiFields, aiChat, aiSuggestions };
-
-    setIntakeOpen(false);
-    setAiChat([]);
+   const intakeSeconds = patientInfo && patientInfo.consentAt
+      ? Math.round((Date.now() - new Date(patientInfo.consentAt).getTime()) / 1000)
+      : null;
+    const finalRecord = { ...(patientInfo || {}), ...record, urgency, ...aiFields, aiChat, aiSuggestions, intakeSeconds };
+      setIntakeOpen(false);
+      setAiChat([]);
 
     // Remember that this browser belongs to this record
     try {
@@ -353,6 +365,10 @@ export default function App() {
       logEvent("doctor", REVIEW_ACTION[patch.reviewStatus] || "Doctor changed review status", rec);
     } else if (patch.prescription || patch.patientMedicines) {
       logEvent("doctor", "Doctor saved medicines", rec);
+    } else if (patch.feedback) {
+      logEvent("patient", "Patient sent feedback", rec);
+    } else if (patch.feedback) {
+      logEvent("patient", "Patient sent feedback", rec);
     } else if (patch.attachments) {
       logEvent("patient", "Patient attached a file", rec);
     } else if (patch.aiSuggestions) {
@@ -398,6 +414,17 @@ export default function App() {
         <button className="btn solid" onClick={() => setEmergencyNotice(false)}>OK</button>
       </div>
     );
+  } else if (setupOpen) {
+    content = (
+      <Consent
+        onBack={() => setSetupOpen(false)}
+        onDone={(info) => {
+          setPatientInfo(info);
+          setSetupOpen(false);
+          setSymptomOpen(true);
+        }}
+      />
+    );
   } else if (symptomOpen) {
     content = (
       <SymptomChat
@@ -420,14 +447,26 @@ export default function App() {
     content = (
       <div className="page">
         <h2>Messages</h2>
+        {chatRecord.token != null && (
+          <div className="card-box" style={{ marginBottom: 12 }}>
+            <strong>Your place in the queue</strong>
+            <p style={{ fontSize: 15, margin: "4px 0 0" }}>
+              {patientsAhead(records, chatRecord.token) === 0
+                ? "You are next."
+                : patientsAhead(records, chatRecord.token) + " patients are ahead of you."}
+            </p>
+            <p className="muted" style={{ fontSize: 12 }}>Updates automatically.</p>
+          </div>
+        )}
         <PatientAdvice record={chatRecord} />
-        <Attachments
+       <Attachments
           title="Your reports"
           files={chatRecord.attachments || []}
           canAdd={true}
           onAdd={(list) => handleUpdate(chatRecord.id, { attachments: list })}
         />
         <p className="muted">Write to your doctor here. For a medical emergency, call emergency services.</p>
+        <PatientFeedback record={chatRecord} onSave={(fb) => handleUpdate(chatRecord.id, { feedback: fb })} />
         <Chat
           title="Your doctor"
           sender="patient"
@@ -440,7 +479,7 @@ export default function App() {
   } else {
     content = (
       <Active
-        onBook={() => setSymptomOpen(true)}
+        onBook={() => (patientInfo ? setSymptomOpen(true) : setSetupOpen(true))}
         records={records}
         alerts={alerts}
         audit={audit}
@@ -455,11 +494,12 @@ export default function App() {
     screen === "app" ? "screen dive" : GRADIENT_SCREENS.includes(screen) ? "screen grad" : "screen";
 
   const showNav =
-    screen === "app" && !booking && !symptomOpen && !intakeOpen && !chatOpen && !emergencyNotice;
+    screen === "app" && !booking && !symptomOpen && !intakeOpen && !chatOpen && !emergencyNotice && ! setupOpen;
   const showMessageButton = showNav && role === "patient" && chatRecord;
 
   return (
     <div className="phone">
+      {screen === "app" && <AiStatus />}
       <div
         className={wrapperClass}
         style={{ "--dir": dir }}
