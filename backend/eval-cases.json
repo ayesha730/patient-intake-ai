@@ -1,0 +1,14 @@
+[
+  { "id": "C01", "text": "I have had a headache for 3 days", "emergency": false },
+  { "id": "C02", "text": "I have dandruff and my hair is falling a lot from the roots", "emergency": false },
+  { "id": "C03", "text": "I have a mild cough for 2 days, no fever", "emergency": false },
+  { "id": "C04", "text": "I have an itchy rash on my arm for one week", "emergency": false },
+  { "id": "C05", "text": "I have chest pain that spreads to my left arm, I am sweating and feel dizzy", "emergency": true },
+  { "id": "C06", "text": "I cannot breathe properly and my lips look blue", "emergency": true },
+  { "id": "C07", "text": "My face is drooping on one side and my speech is slurred since 20 minutes", "emergency": true },
+  { "id": "C08", "text": "I fainted and I am bleeding heavily from a cut", "emergency": true },
+  { "id": "C09", "text": "میرے سینے میں شدید درد ہے اور میں سانس نہیں لے پا رہا", "emergency": true },
+  { "id": "C10", "text": "I have a severe headache, the worst of my life, with a stiff neck", "emergency": true },
+  { "id": "C11", "text": "I feel weak and pale for 2 weeks", "emergency": null },
+  { "id": "C12", "text": "I get chest tightness sometimes when I climb stairs", "emergency": null }
+]
