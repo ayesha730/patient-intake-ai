@@ -1,0 +1,8 @@
+{
+  "name": "docassist-ai",
+  "version": "1.0.0",
+  "scripts": {
+    "prestart": "npm --prefix frontend install && npm --prefix frontend run build",
+    "start": "node backend/server.js"
+  }
+}
