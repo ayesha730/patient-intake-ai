@@ -36,7 +36,7 @@ function serveFrontend(req, res) {
 }
 
 // The AI talks to the patient and proposes medicine and food. A doctor approves or rejects every suggestion.
-const PROMPT = [
+const CHAT_PROMPT = [
   "You are a health information helper before a clinic visit. You are not a doctor.",
   "Reply in the same language the patient uses.",
   "Ask at most one short question at a time, about how long the problem has lasted, how severe it is from 1 to 10, and any other symptoms.",
